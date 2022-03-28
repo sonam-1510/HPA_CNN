@@ -66,7 +66,7 @@ def model(sample_shape):
     model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(GlobalAveragePooling2D())
-    model.add(Dense(4096))
+    model.add(Dense(128))
     model.add(BatchNormalization())
     model.add(Activation('relu'))
     
