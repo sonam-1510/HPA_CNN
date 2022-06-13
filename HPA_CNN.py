@@ -21,16 +21,19 @@ test_path = os.path.join(data_path,'test')
 labels_path = os.path.join(data_path, 'train.csv')
 
 train_labels = pd.read_csv(labels_path,index_col=False)
-train_ids, val_ids = train_test_split(train_labels, test_size=0.2, random_state=48)
-labels = [item.split() for item in train_labels['Target']]
 
+train_ids, test_ids = train_test_split(train_labels, test_size=0.2, random_state=48) 
+test_ids, val_ids = train_test_split(test_ids, test_size=0.5, random_state=48)
+
+
+labels = [item.split() for item in train_labels['Target']]
 mlb = MultiLabelBinarizer()
 mlb.fit(labels)
 classes = mlb.classes_
 y_val = mlb.transform([item.split() for item in val_ids['Target']])
+y_test = mlb.transform([item.split() for item in test_ids['Target']])
 
 def model(sample_shape):
-    
     model = Sequential()
     model.add(Conv2D(32, kernel_size=(3, 3), input_shape=sample_shape))
     model.add(BatchNormalization())
@@ -42,7 +45,6 @@ def model(sample_shape):
     model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
-
     model.add(Conv2D(64, kernel_size=(3, 3)))
     model.add(BatchNormalization())
     model.add(Activation('relu'))
@@ -50,8 +52,6 @@ def model(sample_shape):
     model.add(BatchNormalization())
     model.add(Activation('relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
-    
-    
     model.add(Conv2D(128, kernel_size=(3, 3)))
     model.add(BatchNormalization())
     model.add(Activation('relu'))
@@ -69,7 +69,6 @@ def model(sample_shape):
     model.add(Dense(128))
     model.add(BatchNormalization())
     model.add(Activation('relu'))
-    
     model.add(Dense(28))
     model.add(Activation('sigmoid'))
     return model
@@ -81,7 +80,22 @@ def model(sample_shape):
     img.append(plt.imread(os.path.join(image_folder, img_id+'_green.png')))
     return np.stack(img, axis=2)
   
-  def val_generator(BATCH_SIZE):
+from imgaug import augmenters as iaa
+def augment(image):
+    augment_img = iaa.Sequential([
+        iaa.OneOf([
+            iaa.Affine(rotate=30),
+            iaa.Affine(rotate=45),
+            iaa.Affine(rotate=60),
+            iaa.Scale(0.2),
+            iaa.Fliplr(0.5),
+            iaa.Flipud(0.5),
+        ])], random_order=True)
+
+    image_aug = augment_img.augment_image(image)
+    return image_aug  
+    
+def val_generator(BATCH_SIZE):
     image_folder = train_path
     while True:
         val_imgs = []
@@ -105,7 +119,7 @@ def model(sample_shape):
                 imgs = np.expand_dims(imgs, axis=3)
             yield (imgs, labels)
             
-def train_generator(BATCH_SIZE):
+def train_generator(BATCH_SIZE, augment = True):
     image_folder = train_path
     while True:
              
@@ -131,6 +145,33 @@ def train_generator(BATCH_SIZE):
                 imgs = np.expand_dims(imgs, axis=3)
             
             yield (imgs, labels)
+     
+ def test_generator(BATCH_SIZE):
+    image_folder = train_path
+    while True:
+        
+        test_imgs = []
+        test_labels = []
+        
+        for f in test_ids.values:
+            img = get_rgb_img(image_folder,f[0])
+            test_imgs.append(cv2.resize(img, (IMG_SIZE, IMG_SIZE)))
+            test_labels.append(f[1])
+            if len(test_imgs) == BATCH_SIZE:
+                imgs = np.stack(test_imgs, axis=0)
+                labels = mlb.transform([item.split() for item in test_labels])
+                if len(imgs.shape[ 1: ]) == 2:
+                    imgs = np.expand_dims(imgs, axis=3)
+                yield (imgs, labels)
+                test_imgs =[]
+                test_labels =[]
+        if len(test_imgs) > 0:
+            imgs = np.stack(test_imgs, axis=0)
+            labels = mlb.transform([item.split() for item in test_labels])
+            if len(imgs.shape[ 1: ]) == 2:
+                imgs = np.expand_dims(imgs, axis=3)
+            yield (imgs, labels)
+
 DEPTH = 3
 BATCH_SIZE = 32
 IMG_SIZE = 512
@@ -138,16 +179,15 @@ SAMPLE_SHAPE = (IMG_SIZE, IMG_SIZE, DEPTH)
 
 lr = 1e-3
 adam = Adam(lr=lr)
-model.compile(optimizer=adam, 
-                  loss='binary_crossentropy',
-                metrics=['acc'])
+model.compile(optimizer=adam, loss='binary_crossentropy', metrics=['acc'])
 
-history = model.fit_generator(train_generator(BATCH_SIZE),
-                                  steps_per_epoch = len(train_ids)/BATCH_SIZE,
-                                  validation_data=val_generator(BATCH_SIZE),
-                                  validation_steps=len(val_ids)/BATCH_SIZE,
-                                  epochs=30)
+history = model.fit_generator(train_generator(BATCH_SIZE, augment = True),
+                              steps_per_epoch = len(train_ids)/BATCH_SIZE,
+                              validation_data=test_generator(BATCH_SIZE),
+                              validation_steps=len(test_ids)/BATCH_SIZE,
+                              epochs=30)
 
-predictions = model.predict_generator(val_generator(BATCH_SIZE),steps=len(val_ids)/BATCH_SIZE)
+predictions = model.predict_generator(test_generator(BATCH_SIZE),steps=len(test_ids)/BATCH_SIZE)
+
 
    
