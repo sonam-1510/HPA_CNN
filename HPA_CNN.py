@@ -186,8 +186,108 @@ history = model.fit_generator(train_generator(BATCH_SIZE, augment = True),
                               validation_data=test_generator(BATCH_SIZE),
                               validation_steps=len(test_ids)/BATCH_SIZE,
                               epochs=30)
+lw = 3
+plt.figure(figsize=(10,6))
+plt.plot(history.history['acc'], label = 'Training', marker = '*', linewidth = lw)
+plt.plot(history.history['val_acc'], label = 'Test', marker = 'o', linewidth = lw)
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend(fontsize = 'x-large')
+plt.show()
+
+lw = 3
+plt.figure(figsize=(10,6))
+plt.plot(history.history['loss'], label = 'Training', marker = '*', linewidth = lw)
+plt.plot(history.history['val_loss'], label = 'Test', marker = 'o', linewidth = lw)
+plt.title('Model Loss')
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(fontsize = 'x-large')
+plt.show()
 
 predictions = model.predict_generator(test_generator(BATCH_SIZE),steps=len(test_ids)/BATCH_SIZE)
+
+def binary_prf1(y_true, y_pred):
+    
+    num_pos = np.sum(y_true)
+    pred_pos = np.sum(y_pred)
+    tp = np.sum(y_true * y_pred)
+    if pred_pos > 0:
+        precision = tp/pred_pos
+    else:
+        precision = 0
+    if num_pos > 0:
+        recall = tp/num_pos
+    else:
+        recall = 0
+        print('no pos cases for this class')
+    if precision >0 or recall > 0:
+        f1 = 2*precision*recall/(precision + recall)
+    else:
+        f1 = 0
+    return precision, recall, f1
+
+def max_thresh(y_val, predictions, n=100):
+    x = np.linspace(0,1,n+1)[1 : -1]
+    f1_matrix = np.zeros((len(x), 28))
+
+    for i in range(28):
+        class_f1 = []
+        for thresh in x:
+            pred_class = (predictions > thresh).astype(int)
+            class_f1.append((binary_prf1(y_val[ :, i], pred_class[ : , i])[2]))
+        f1_matrix[ :, i] = np.array(class_f1)
+    max_loc = np.argmax(f1_matrix, axis=0)
+    max_thresh = [x[i] for i in max_loc]
+    return max_thresh
+
+max_t = max_thresh(y_test, predictions)
+pred_classes = (predictions > max_t).astype(int)
+
+pred_labels = mlb.inverse_transform(pred_classes)
+pred_labels = [' '.join(item) for item in pred_labels]
+
+from sklearn.metrics import classification_report
+label_names = ['0','1','2','3','4','5','6','7','8','9','10', '11','12','13','14','15','16','17','18', '19', '20', '21', '22','23','24','25','26','27']
+print(classification_report(y_test, pred_classes,target_names=label_names))
+
+val_predictions = model.predict_generator(val_generator(BATCH_SIZE),steps=(val_ids)/BATCH_SIZE))
+max_t = max_thresh(y_val, val_predictions)
+val_pred_classes = (val_predictions > max_t).astype(int)
+
+val_pred_labels = mlb.inverse_transform(val_pred_classes)
+val_pred_labels = [' '.join(item) for item in val_pred_labels]
+
+from sklearn.metrics import classification_report
+label_names = ['0','1','2','3','4','5','6','7','8','9','10', '11','12','13','14','15','16','17','18', '19', '20', '21', '22','23','24','25','26','27']
+print(classification_report(y_val, val_pred_classes,target_names=label_names))
+
+y_val_dataframe = pd.DataFrame(y_val)
+
+from sklearn.metrics import roc_auc_score
+print('AUC CKECK-UP per CLASS')
+classes= y_val_dataframe.columns
+for i, n in enumerate(classes):
+  print(classes[i])
+  print(i, roc_auc_score(y_val[:, i], val_pred_classes[:, i]))
+  print('---------')
+
+from sklearn.metrics import roc_curve, auc
+fig, c_ax = plt.subplots(1,1, figsize = (10, 10))
+for (i, label) in enumerate(classes):
+    fpr, tpr, thresholds = roc_curve(y_val[:,i].astype(int), val_predictions[:,i])
+    c_ax.plot(fpr, tpr, label = '%s (AUC:%0.2f)'  % (label, auc(fpr, tpr)))
+c_ax.legend()
+c_ax.set_xlabel('False Positive Rate')
+c_ax.set_ylabel('True Positive Rate')
+
+from sklearn.metrics import multilabel_confusion_matrix
+confusion = multilabel_confusion_matrix(y_val, val_pred_labels)
+
+
+
+
 
 
    
