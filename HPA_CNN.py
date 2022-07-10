@@ -22,8 +22,8 @@ labels_path = os.path.join(data_path, 'train.csv')
 
 train_labels = pd.read_csv(labels_path,index_col=False)
 
-train_ids, test_ids = train_test_split(train_labels, test_size=0.2, random_state=48) 
-test_ids, val_ids = train_test_split(test_ids, test_size=0.5, random_state=48)
+train_ids, test_ids = train_test_split(train_labels, test_size=0.1, random_state=48) 
+train_ids, val_ids = train_test_split(train_ids, test_size=0.1, random_state=48)
 
 
 labels = [item.split() for item in train_labels['Target']]
@@ -183,13 +183,13 @@ model.compile(optimizer=adam, loss='binary_crossentropy', metrics=['acc'])
 
 history = model.fit_generator(train_generator(BATCH_SIZE, augment = True),
                               steps_per_epoch = len(train_ids)/BATCH_SIZE,
-                              validation_data=test_generator(BATCH_SIZE),
-                              validation_steps=len(test_ids)/BATCH_SIZE,
+                              validation_data=val_generator(BATCH_SIZE),
+                              validation_steps=len(val_ids)/BATCH_SIZE,
                               epochs=30)
 lw = 3
 plt.figure(figsize=(10,6))
 plt.plot(history.history['acc'], label = 'Training', marker = '*', linewidth = lw)
-plt.plot(history.history['val_acc'], label = 'Test', marker = 'o', linewidth = lw)
+plt.plot(history.history['val_acc'], label = 'Validation', marker = 'o', linewidth = lw)
 plt.title('Model Accuracy')
 plt.ylabel('Accuracy')
 plt.xlabel('Epoch')
@@ -199,7 +199,7 @@ plt.show()
 lw = 3
 plt.figure(figsize=(10,6))
 plt.plot(history.history['loss'], label = 'Training', marker = '*', linewidth = lw)
-plt.plot(history.history['val_loss'], label = 'Test', marker = 'o', linewidth = lw)
+plt.plot(history.history['val_loss'], label = 'Validation', marker = 'o', linewidth = lw)
 plt.title('Model Loss')
 plt.ylabel('Loss')
 plt.xlabel('Epoch')
@@ -252,38 +252,27 @@ from sklearn.metrics import classification_report
 label_names = ['0','1','2','3','4','5','6','7','8','9','10', '11','12','13','14','15','16','17','18', '19', '20', '21', '22','23','24','25','26','27']
 print(classification_report(y_test, pred_classes,target_names=label_names))
 
-val_predictions = model.predict_generator(val_generator(BATCH_SIZE),steps=(val_ids)/BATCH_SIZE))
-max_t = max_thresh(y_val, val_predictions)
-val_pred_classes = (val_predictions > max_t).astype(int)
-
-val_pred_labels = mlb.inverse_transform(val_pred_classes)
-val_pred_labels = [' '.join(item) for item in val_pred_labels]
-
-from sklearn.metrics import classification_report
-label_names = ['0','1','2','3','4','5','6','7','8','9','10', '11','12','13','14','15','16','17','18', '19', '20', '21', '22','23','24','25','26','27']
-print(classification_report(y_val, val_pred_classes,target_names=label_names))
-
-y_val_dataframe = pd.DataFrame(y_val)
+y_test_dataframe = pd.DataFrame(y_test)
 
 from sklearn.metrics import roc_auc_score
 print('AUC CKECK-UP per CLASS')
-classes= y_val_dataframe.columns
+classes= y_test_dataframe.columns
 for i, n in enumerate(classes):
   print(classes[i])
-  print(i, roc_auc_score(y_val[:, i], val_pred_classes[:, i]))
+  print(i, roc_auc_score(y_test[:, i], pred_classes[:, i]))
   print('---------')
 
 from sklearn.metrics import roc_curve, auc
 fig, c_ax = plt.subplots(1,1, figsize = (10, 10))
 for (i, label) in enumerate(classes):
-    fpr, tpr, thresholds = roc_curve(y_val[:,i].astype(int), val_predictions[:,i])
+    fpr, tpr, thresholds = roc_curve(y_test[:,i].astype(int), predictions[:,i])
     c_ax.plot(fpr, tpr, label = '%s (AUC:%0.2f)'  % (label, auc(fpr, tpr)))
 c_ax.legend()
 c_ax.set_xlabel('False Positive Rate')
 c_ax.set_ylabel('True Positive Rate')
 
 from sklearn.metrics import multilabel_confusion_matrix
-confusion = multilabel_confusion_matrix(y_val, val_pred_labels)
+confusion = multilabel_confusion_matrix(y_test, pred_labels)
 
 
 
